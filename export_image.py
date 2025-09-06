@@ -136,9 +136,11 @@ def get_time(dt):
     else:
         return datetime(dt.year, dt.month, dt.day, tzinfo=TIMEZONE)
 
-def get_future_events(evtdata):
+def get_future_events(evtdata, start_of_day):
     """Filter events to only those that are in the future."""
     now = datetime.now(TIMEZONE)
+    if start_of_day:
+        now = datetime(now.year, now.month, now.day, tzinfo=TIMEZONE)
     return (evt for evt in evtdata if now < get_time(evt['end']))
 
 def events_to_html_table(events):
@@ -220,6 +222,7 @@ def main():
     parser = argparse.ArgumentParser(description="Export calendar events as a PDF.")
     parser.add_argument("html_file", nargs="?", default=DEFAULT_FILE, help="URL or path of HTML file to parse. Default: website.")
     parser.add_argument("--output", "-o", default="events.pdf", help="Output PDF file. Default: events.pdf")
+    parser.add_argument("--start-of-day", type=bool, default=False, help="Show events from midnight today. Default: False")
     args = parser.parse_args()
 
     print("Loading HTML...")
@@ -227,7 +230,7 @@ def main():
     print(f"Loaded some calendars. Processing...")
     caldata = download_calendars(caldata)
     evtdata = get_calendar_events(caldata)
-    evtdata = get_future_events(evtdata)
+    evtdata = get_future_events(evtdata, args.start_of_day)
     events = sorted(evtdata, key=lambda evt: (get_time(evt['start']), evt['summary']))
     print(f"Found {len(events)} future events. Generating PDF...")
     html = events_to_html_table(events)
