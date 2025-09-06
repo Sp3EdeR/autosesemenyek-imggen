@@ -147,7 +147,8 @@ def events_to_html_table(events):
     DATE_FMT = '%Y.%m.%d.'
     DATETIME_FMT = DATE_FMT + ' %H:%M'
     def format_dt(dt):
-        return dt.strftime(DATETIME_FMT) if isinstance(dt, datetime) else dt.strftime(DATE_FMT)
+        return (dt.astimezone(TIMEZONE).strftime(DATETIME_FMT) if isinstance(dt, datetime)
+                else dt.strftime(DATE_FMT))
 
     html = []
     for idx, evt in enumerate(events):
