@@ -256,7 +256,7 @@ def main():
     parser = argparse.ArgumentParser(description="Export calendar events as a PDF.")
     parser.add_argument("html_file", nargs="?", default=DEFAULT_INPUT, help="URL or path of HTML file to parse. Default: website.")
     parser.add_argument("--output", "-o", default="events", help="Output without extension. Default: events")
-    parser.add_argument("--start-of-day", type=bool, default=False, help="Show events from midnight today. Default: False")
+    parser.add_argument("--start-of-day", type=bool, default=True, help="Show events from midnight today. Default: True")
     args = parser.parse_args()
 
     print("Loading HTML...")
