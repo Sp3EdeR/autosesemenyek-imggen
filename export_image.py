@@ -3,7 +3,7 @@ if importlib.util.find_spec('icalendar') is None:
     raise ImportError('Install the missing icalendar module using "pip install icalendar".')
 
 import argparse
-from datetime import datetime
+from datetime import datetime, timedelta
 import errno
 import icalendar # pip install icalendar
 import io
@@ -148,7 +148,10 @@ def events_to_html_table(events):
     AD_ROW = f'<tr class="ad"><td colspan="4"><i></i></td></tr>'
     DATE_FMT = '%Y.%m.%d.'
     DATETIME_FMT = DATE_FMT + ' %H:%M'
-    def format_dt(dt):
+    def format_dt(dt, end=False):
+        # Dates are an open ended interval, so show the day before as the end date
+        if end and not isinstance(dt, datetime):
+            dt = dt - timedelta(days=1)
         return (dt.astimezone(TIMEZONE).strftime(DATETIME_FMT) if isinstance(dt, datetime)
                 else dt.strftime(DATE_FMT))
 
