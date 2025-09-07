@@ -23,7 +23,7 @@ from zoneinfo import ZoneInfo
 
 DEFAULT_FILE = "https://sp3eder.github.io/autosesemenyek/"
 TIMEZONE = ZoneInfo("Europe/Budapest")
-HTML_TEMPLATE = '''<!DOCTYPE html>
+HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="hu">
 <head>
   <title>Autós Események</title>
@@ -35,9 +35,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }
     html {
       font-family: Bahnschrift, Verdana, Arial, sans-serif;
-      font-size: 1.3em;
+      font-size: 4mm;
       background-image: url('@SRC_URL@/pattern.jpg');
       background-repeat: repeat;
+      background-size: 210mm;
       text-shadow: 0 0 10px white, 0 0 1px #000000b3;
     }
     body {
@@ -96,7 +97,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 <body>
   <table cellspacing="0" cellpadding="4">
     <colgroup>
-      <col span="2" style="width:170px;" /> <!-- Change if font is changed! -->
+      <col span="2" style="width:32mm;" /> <!-- Change if font is changed! -->
       <col span="1" style="width:60%;" />
       <col span="1" style="width:40%;" />
     </colgroup>
@@ -114,7 +115,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
   </table>
 </body>
 </html>
-'''
+"""
 
 def load_html(file_path):
     """Load Autos Esemenyek index.html file from a URL or local file."""
