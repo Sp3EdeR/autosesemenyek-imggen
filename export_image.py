@@ -196,13 +196,13 @@ def events_to_html_table(events):
 
     return HTML_TEMPLATE.replace('@TABLE_ROWS@', '\n'.join(html), 1).replace('@SRC_URL@', script_url)
 
-def write_pdf_from_html(html):
+def write_pdf_from_html(html, keep_temp):
     """Write HTML to a PDF file using headless Edge browser (Windows only)."""
     output_path = tempfile.mktemp(prefix="event_", suffix=".pdf")
 
     with tempfile.NamedTemporaryFile(
         mode='w+', encoding='utf-8', prefix='event_', suffix='.html',
-        delete=True, delete_on_close=False
+        delete=not keep_temp, delete_on_close=False
     ) as html_file:
         html_path = html_file.name
         html_file.write(html)
@@ -228,7 +228,7 @@ def write_pdf_from_html(html):
 
     return output_path
     
-def export_to_png(output_path, pdf_path):
+def export_to_png(output_path, pdf_path, keep_temp):
     """Convert PDF pages to PNG images using PyMuPDF (if available)."""
     if not os.path.isabs(output_path):
         output_path = os.path.join(os.getcwd(), output_path)
@@ -242,7 +242,8 @@ def export_to_png(output_path, pdf_path):
             pix.save(f"{output_path}_{i+1}.png")
 
     try:
-        os.remove(pdf_path)
+        if (keep_temp):
+            os.remove(pdf_path)
     except OSError:
         pass
 
@@ -257,6 +258,7 @@ def main():
     parser.add_argument("html_file", nargs="?", default=DEFAULT_INPUT, help="URL or path of HTML file to parse. Default: website.")
     parser.add_argument("--output", "-o", default="events", help="Output without extension. Default: events")
     parser.add_argument("--start-of-day", type=bool, default=True, help="Show events from midnight today. Default: True")
+    parser.add_argument("--keep-temp", type=bool, default=False, help="Keep temporary files. Default: False")
     args = parser.parse_args()
 
     print("Loading HTML...")
@@ -268,9 +270,9 @@ def main():
     events = sorted(evtdata, key=lambda evt: (get_time(evt["start"]), evt["summary"]))
     print(f"Found {len(events)} future events. Generating PDF...")
     html = events_to_html_table(events)
-    pdf_file = write_pdf_from_html(html)
+    pdf_file = write_pdf_from_html(html, keep_temp=args.keep_temp)
     print(f"PDF file is created. Converting to PNG images...")
-    out_dir = export_to_png(args.output, pdf_file)
+    out_dir = export_to_png(args.output, pdf_file, keep_temp=args.keep_temp)
     os.startfile(out_dir)
 
 if __name__=="__main__":
