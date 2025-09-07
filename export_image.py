@@ -196,7 +196,8 @@ def write_pdf_from_html(output_path, html):
             raise
 
     with tempfile.NamedTemporaryFile(
-        mode='w+', encoding='utf-8', suffix='.html', delete=True, delete_on_close=False
+        mode='w+', encoding='utf-8', prefix='event_', suffix='.html',
+        delete=True, delete_on_close=False
     ) as html_file:
         html_path = html_file.name
         html_file.write(html)
