@@ -39,7 +39,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
     html {
       font-family: Bahnschrift, Verdana, Arial, sans-serif;
-      font-size: 4mm;
+      font-size: 4.3mm;
       background-image: url('@SRC_URL@/pattern.jpg');
       background-repeat: repeat;
       background-size: 210mm;
@@ -101,7 +101,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <body>
   <table cellspacing="0" cellpadding="4">
     <colgroup>
-      <col span="2" style="width:32mm;" /> <!-- Change if font is changed! -->
+      <col span="2" style="width:34mm;" /> <!-- Change if font is changed! -->
       <col span="1" style="width:60%;" />
       <col span="1" style="width:40%;" />
     </colgroup>
