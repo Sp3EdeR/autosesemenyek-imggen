@@ -4,15 +4,18 @@
 import importlib.util
 if importlib.util.find_spec('icalendar') is None:
     raise ImportError('Install the missing icalendar module using "pip install icalendar".')
+if importlib.util.find_spec('pymupdf') is None:
+    raise ImportError('Install the missing pymupdf module using "pip install pymupdf".')
 
 import argparse
 from datetime import datetime, timedelta
-import errno
+import glob
 import icalendar # pip install icalendar
 import io
 from operator import itemgetter
 import os.path
 import pathlib
+import pymupdf # pip install pymupdf
 import re
 import subprocess
 import sys
@@ -21,8 +24,9 @@ import time
 from urllib import request as urlrequest
 from zoneinfo import ZoneInfo
 
-DEFAULT_FILE = "https://sp3eder.github.io/autosesemenyek/"
+DEFAULT_INPUT = "https://sp3eder.github.io/autosesemenyek/"
 TIMEZONE = ZoneInfo("Europe/Budapest")
+IMAGE_DPI = 250
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="hu">
 <head>
@@ -192,15 +196,9 @@ def events_to_html_table(events):
 
     return HTML_TEMPLATE.replace('@TABLE_ROWS@', '\n'.join(html), 1).replace('@SRC_URL@', script_url)
 
-def write_pdf_from_html(output_path, html):
+def write_pdf_from_html(html):
     """Write HTML to a PDF file using headless Edge browser (Windows only)."""
-    if not os.path.isabs(output_path):
-        output_path = os.path.join(os.getcwd(), output_path)
-    try:
-        os.remove(output_path)
-    except OSError as e:
-        if e.errno != errno.ENOENT:
-            raise
+    output_path = tempfile.mktemp(prefix="event_", suffix=".pdf")
 
     with tempfile.NamedTemporaryFile(
         mode='w+', encoding='utf-8', prefix='event_', suffix='.html',
@@ -225,26 +223,39 @@ def write_pdf_from_html(output_path, html):
         start_time = time.time()
         while not os.path.exists(output_path):
             if time.time() - start_time > timeout:
-                raise TimeoutError(f"PDF file was not created within {timeout} seconds: {output_path}")
+                raise TimeoutError(f'PDF file was not created within {timeout} seconds: {output_path}')
             time.sleep(0.1)
 
-        return output_path
+    return output_path
     
-def open_file(filepath):
-    """Open a file with the default associated application (Windows only)."""
-    subprocess.Popen(
-        [filepath], shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-    )
+def export_to_png(output_path, pdf_path):
+    """Convert PDF pages to PNG images using PyMuPDF (if available)."""
+    if not os.path.isabs(output_path):
+        output_path = os.path.join(os.getcwd(), output_path)
+
+    for file in glob.glob(f"{output_path}_*.png"):
+        os.remove(file)
+
+    with pymupdf.open(pdf_path) as doc:
+        for i, page in enumerate(doc):
+            pix = page.get_pixmap(dpi=IMAGE_DPI)
+            pix.save(f"{output_path}_{i+1}.png")
+
+    try:
+        os.remove(pdf_path)
+    except OSError:
+        pass
+
+    return os.path.dirname(output_path)
 
 def main():
     """Main function to convert calendars to PDF."""
     if os.name != "nt":
         raise OSError("This script can only be run on Windows.")
-    
+
     parser = argparse.ArgumentParser(description="Export calendar events as a PDF.")
-    parser.add_argument("html_file", nargs="?", default=DEFAULT_FILE, help="URL or path of HTML file to parse. Default: website.")
-    parser.add_argument("--output", "-o", default="events.pdf", help="Output PDF file. Default: events.pdf")
+    parser.add_argument("html_file", nargs="?", default=DEFAULT_INPUT, help="URL or path of HTML file to parse. Default: website.")
+    parser.add_argument("--output", "-o", default="events", help="Output without extension. Default: events")
     parser.add_argument("--start-of-day", type=bool, default=False, help="Show events from midnight today. Default: False")
     args = parser.parse_args()
 
@@ -254,12 +265,13 @@ def main():
     caldata = download_calendars(caldata)
     evtdata = get_calendar_events(caldata)
     evtdata = get_future_events(evtdata, args.start_of_day)
-    events = sorted(evtdata, key=lambda evt: (get_time(evt['start']), evt['summary']))
+    events = sorted(evtdata, key=lambda evt: (get_time(evt["start"]), evt["summary"]))
     print(f"Found {len(events)} future events. Generating PDF...")
     html = events_to_html_table(events)
-    output = write_pdf_from_html(args.output, html)
-    print(f"Done. Output written to {output}")
-    open_file(output)
+    pdf_file = write_pdf_from_html(html)
+    print(f"PDF file is created. Converting to PNG images...")
+    out_dir = export_to_png(args.output, pdf_file)
+    os.startfile(out_dir)
 
 if __name__=="__main__":
     main()
