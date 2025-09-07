@@ -90,6 +90,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border: 1px solid gray;
       border-left: none;
       border-right: none;
+      overflow-wrap: break-word;
       padding: 2px 6px 2px 6px;
     }
     tr td:nth-child(1), tr td:nth-child(2) {
