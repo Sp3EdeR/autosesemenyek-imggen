@@ -1,3 +1,6 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
 import importlib.util
 if importlib.util.find_spec('icalendar') is None:
     raise ImportError('Install the missing icalendar module using "pip install icalendar".')
@@ -20,30 +23,19 @@ from zoneinfo import ZoneInfo
 
 DEFAULT_FILE = "https://sp3eder.github.io/autosesemenyek/"
 TIMEZONE = ZoneInfo("Europe/Budapest")
-AD_FREQUENCY = 15 # Insert ad at every Nth event
 HTML_TEMPLATE = '''<!DOCTYPE html>
 <html lang="hu">
 <head>
+  <title>Autós Események</title>
   <meta name="color-scheme" content="only light">
-  <script src="https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
-  <script>
-    $('document').ready(function() {
-      $('tr.ad i').each(function() {
-        $(this).replaceWith(
-          '<h3>AUTÓS ESEMÉNYEK NAPTÁRA</h3>' +
-          'további infók &#8212; <a href="https://sp3eder.github.io/autosesemenyek/" target="_blank">https://sp3eder.github.io/autosesemenyek/</a> &#8212; élő követés'
-        );
-      });
-    });
-  </script>
   <style>
     @page {
       margin: 0mm;
       size: 210mm 373.3mm;
     }
     body {
-      font-family: Arial, sans-serif;
-      font-size: 16px;
+      font-family: Bahnschrift, Verdana, Arial, sans-serif;
+      font-size: 1em;
       background-image: url('@SRC_URL@/pattern.jpg');
       background-repeat: repeat;
       background-size: 80%;
@@ -61,30 +53,55 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
       width: 100%;
     }
     thead {
-      background-color: #afbdcec5;
+      background-color: #a7b6d662;
+      background: linear-gradient(0deg,#0725384d 0%, #001a4d36 24%, #091b4b1a 79%, #092f4f29 91%, #0a325a17 100%);
+      box-shadow: 0px 0px 5px #000000;
+      font-family: Verdana, Arial, sans-serif;
       font-weight: bold;
+    }
+    thead h1 {
+      font-size: 1.75em;
+      margin: 0;
+      margin-top: 6px;
+      margin-bottom: 6px;
+    }
+    thead p {
+      font-size: 0.8em;
+      font-weight: normal;
+      margin-top: 0;
+      margin-bottom: 0;
+    }
+    thead p:last-child {
+      margin-bottom: 4px;
+    }
+    thead p a {
+      font-weight: bold;
+    }
+    th {
+      border: none;
+    }
+    td {
+      border: 1px solid gray;
+      border-left: none;
+      border-right: none;
+      padding: 2px 6px 2px 6px;
     }
     tr td:nth-child(1), tr td:nth-child(2) {
       page-break-inside: avoid !important;
       white-space: nowrap;
     }
-    td, th {
-      border: 1px solid gray;
-      padding: 2px 6px 2px 6px;
-    }
-    tr.ad {
-      background-color: #cdd0d631;
-      text-align: center;
-    }
-    tr.ad h3 {
-      margin: 0;
-      font-size: 1.2em;
-    }
   </style>
 </head>
 <body>
   <table cellspacing="0" cellpadding="4">
-    <thead><tr><th>Kezd\u00e9s</th><th>V\u00e9ge</th><th>Esem\u00e9ny</th><th>Helysz\u00edn</th></tr></thead>
+    <thead>
+      <tr><th colspan="4">
+        <h1>AUTÓS ESEMÉNYEK NAPTÁRA</h1>
+        <p><a href="https://sp3eder.github.io/autosesemenyek/" target="_blank">sp3eder.github.io/autosesemenyek</a> &#8212; eseményleírások, élő követés</p>
+        <p class="small"><a href="https://sp3eder.github.io/" target="_blank">sp3eder.github.io</a> &#8212; Autós Appok: alkalmazások az autós közösségnek</p>
+      </th></tr>
+      <tr><th>KEZDÉS</th><th>VÉGE</th><th>ESEMÉNY</th><th>HELYSZÍN</th></tr>
+    </thead>
     <tbody>
       @TABLE_ROWS@
     </tbody>
@@ -145,7 +162,6 @@ def get_future_events(evtdata, start_of_day):
 
 def events_to_html_table(events):
     """Convert event data to an HTML table."""
-    AD_ROW = f'<tr class="ad"><td colspan="4"><i></i></td></tr>'
     DATE_FMT = '%Y.%m.%d.'
     DATETIME_FMT = DATE_FMT + ' %H:%M'
     def format_dt(dt, end=False):
@@ -156,18 +172,14 @@ def events_to_html_table(events):
                 else dt.strftime(DATE_FMT))
 
     html = []
-    for idx, evt in enumerate(events):
-        if 0 < idx and idx % AD_FREQUENCY == 0:
-            html.append(AD_ROW)
-
+    for evt in events:
         summary = evt.get('summary', '')
         location = evt.get('location', '') or ''
         html.append(
             f'<tr style="color: {evt['clr']};">'
-            f'<td>{format_dt(evt['start'])}</td><td>{format_dt(evt['end'])}</td>'
+            f'<td>{format_dt(evt['start'])}</td><td>{format_dt(evt['end'], end=True)}</td>'
             f'<td>{summary}</td><td>{location}</td></tr>'
         )
-    html.append(AD_ROW)
 
     script_url = pathlib.Path(os.path.dirname(os.path.abspath(__file__))).as_uri()
 
