@@ -33,23 +33,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
       margin: 0mm;
       size: 210mm 373.3mm;
     }
-    body {
+    html {
       font-family: Bahnschrift, Verdana, Arial, sans-serif;
-      font-size: 1em;
+      font-size: 1.3em;
       background-image: url('@SRC_URL@/pattern.jpg');
       background-repeat: repeat;
-      background-size: 80%;
-      margin: 0;
       text-shadow: 0 0 10px white, 0 0 1px #000000b3;
+    }
+    body {
+      margin: 0;
     }
     a {
       color: inherit;
       text-decoration: none;
     }
     table {
-      border: 1px solid gray;
+      border: none;
       border-collapse: collapse;
       border-spacing: 0;
+      table-layout: fixed;
       width: 100%;
     }
     thead {
@@ -68,8 +70,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     thead p {
       font-size: 0.8em;
       font-weight: normal;
-      margin-top: 0;
-      margin-bottom: 0;
+      margin: 0;
     }
     thead p:last-child {
       margin-bottom: 4px;
@@ -94,6 +95,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 </head>
 <body>
   <table cellspacing="0" cellpadding="4">
+    <colgroup>
+      <col span="2" style="width:170px;" /> <!-- Change if font is changed! -->
+      <col span="1" style="width:60%;" />
+      <col span="1" style="width:40%;" />
+    </colgroup>
     <thead>
       <tr><th colspan="4">
         <h1>AUTÓS ESEMÉNYEK NAPTÁRA</h1>
