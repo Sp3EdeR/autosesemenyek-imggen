@@ -264,7 +264,7 @@ def main():
 
     print("Loading HTML...")
     caldata = parse_calids_from_html(load_html(args.html_file))
-    print(f"Loaded some calendars. Processing...")
+    print("Loaded some calendars. Processing...")
     caldata = download_calendars(caldata)
     evtdata = get_calendar_events(caldata)
     evtdata = get_future_events(evtdata, args.start_of_day)
@@ -272,7 +272,7 @@ def main():
     print(f"Found {len(events)} future events. Generating PDF...")
     html = events_to_html_table(events)
     pdf_file = write_pdf_from_html(html, keep_temp=args.keep_temp)
-    print(f"PDF file is created. Converting to PNG images...")
+    print("PDF file is created. Converting to PNG images...")
     out_dir = export_to_png(args.output, pdf_file, keep_temp=args.keep_temp)
     os.startfile(out_dir)
 
