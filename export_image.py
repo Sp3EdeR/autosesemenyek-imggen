@@ -209,23 +209,23 @@ def write_pdf_from_html(html, keep_temp):
         html_file.write(html)
         html_file.close()
 
-        subprocess.run([
+          subprocess.run([
             'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-            '--headless',
-            '--disable-gpu',
-            '--run-all-compositor-stages-before-draw',
-            '--no-pdf-header-footer',
-            '--print-to-pdf-no-header',
-            f'--print-to-pdf={output_path}',
-            html_path
-        ], check=True, stdout=sys.stdout, stderr=sys.stderr, text=True)
+              '--headless',
+              '--disable-gpu',
+              '--run-all-compositor-stages-before-draw',
+              '--no-pdf-header-footer',
+              '--print-to-pdf-no-header',
+              f'--print-to-pdf={output_path}',
+              html_path
+          ], check=True, stdout=sys.stdout, stderr=sys.stderr, text=True)
 
-        timeout = 10
-        start_time = time.time()
-        while not os.path.exists(output_path):
-            if time.time() - start_time > timeout:
+          timeout = 10
+          start_time = time.time()
+          while not os.path.exists(output_path):
+              if time.time() - start_time > timeout:
                 raise TimeoutError(f'PDF file was not created within {timeout} seconds: {output_path}')
-            time.sleep(0.1)
+              time.sleep(0.1)
 
     return output_path
     
@@ -243,7 +243,7 @@ def export_to_png(output_path, pdf_path, keep_temp):
             pix.save(f"{output_path}_{i+1}.png")
 
     try:
-        if (keep_temp):
+        if (not keep_temp):
             os.remove(pdf_path)
     except OSError:
         pass
