@@ -26,6 +26,7 @@ from zoneinfo import ZoneInfo
 
 DEFAULT_INPUT = "https://sp3eder.github.io/autosesemenyek/"
 TIMEZONE = ZoneInfo("Europe/Budapest")
+CHROMIUM_BROWSER_PATH = r"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe"
 IMAGE_DPI = 250
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="hu">
@@ -209,8 +210,9 @@ def write_pdf_from_html(html, keep_temp):
         html_file.write(html)
         html_file.close()
 
+        def print_html():
           subprocess.run([
-            'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+              CHROMIUM_BROWSER_PATH,
               '--headless',
               '--disable-gpu',
               '--run-all-compositor-stages-before-draw',
@@ -224,8 +226,22 @@ def write_pdf_from_html(html, keep_temp):
           start_time = time.time()
           while not os.path.exists(output_path):
               if time.time() - start_time > timeout:
-                raise TimeoutError(f'PDF file was not created within {timeout} seconds: {output_path}')
+                  print(f'PDF file was not created within {timeout} seconds: {output_path}', file=sys.stderr)
               time.sleep(0.1)
+
+        print_html()
+        if not os.path.exists(output_path):
+            print("Trying to run the browser manually to work around its error...")
+            subprocess.run(
+                [CHROMIUM_BROWSER_PATH], check=True,
+                stdout=sys.stdout, stderr=sys.stderr, text=True)
+            time.sleep(3) # wait a bit for the browser to initialize
+            print_html()
+            subprocess.run(
+                ["taskkill", "/f", "/im", os.path.basename(CHROMIUM_BROWSER_PATH)], check=True,
+                stdout=subprocess.DEVNULL, stderr=sys.stderr, text=True)
+            if not os.path.exists(output_path):
+                raise TimeoutError(f'PDF file was not created: {output_path}')
 
     return output_path
     
