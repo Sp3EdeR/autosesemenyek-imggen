@@ -8,7 +8,7 @@ if importlib.util.find_spec('pymupdf') is None:
     raise ImportError('Install the missing pymupdf module using "pip install pymupdf".')
 
 import argparse
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import glob
 import icalendar # pip install icalendar
 import io
@@ -111,12 +111,20 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       min-width: 0;
       text-align: center;
     }
+    tr td:nth-child(1) {
+      text-align: right;
+      padding-right: 2px;
+    }
+    tr td:nth-child(2) {
+      padding-left: 2px;
+    }
   </style>
 </head>
 <body>
   <table cellspacing="0" cellpadding="4">
     <colgroup>
-      <col span="2" style="width:34mm;" /> <!-- Change if font is changed! -->
+      <col span="1" style="width:28mm;" /> <!-- Change if font is changed! -->
+      <col span="1" style="width:14mm;" /> <!-- Change if font is changed! -->
       <col span="1" style="width:60%;" />
       <col span="1" style="width:40%;" />
     </colgroup>
@@ -126,7 +134,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <p><a href="https://sp3eder.github.io/autosesemenyek/" target="_blank">sp3eder.github.io/autosesemenyek</a> &#8212; eseményleírások, élő követés</p>
         <p class="small"><a href="https://sp3eder.github.io/" target="_blank">sp3eder.github.io</a> &#8212; Autós Appok: alkalmazások az autós közösségnek</p>
       </th></tr>
-      <tr><th>KEZDÉS</th><th>VÉGE</th><th>ESEMÉNY</th><th>HELYSZÍN</th></tr>
+      <tr><th colspan="2">IDŐPONT</th><th>ESEMÉNY</th><th>HELYSZÍN</th></tr>
     </thead>
     <tbody>
       @TABLE_ROWS@
@@ -202,24 +210,75 @@ def format_output_html(events, legenddata):
     )
 
     # Format the event table
-    DATE_FMT = '%Y.%m.%d.'
-    DATETIME_FMT = DATE_FMT + ' %H:%M'
-    def format_dt(dt, end=False):
-        # Dates are an open ended interval, so show the day before as the end date
-        if end and not isinstance(dt, datetime):
-            dt = dt - timedelta(days=1)
-        return (dt.astimezone(TIMEZONE).strftime(DATETIME_FMT) if isinstance(dt, datetime)
-                else dt.strftime(DATE_FMT))
+
+    def fmt_date(d, ref=None):
+        """Format date as "'yyyy. mm. dd.", omitting parts that match ref (if given)."""
+        include_year = ref is None or ref.year != d.year
+        include_month = include_year or ref.month != d.month
+        include_day = include_month or ref.day != d.day
+        parts = []
+        if include_year:
+            parts.append(f"{d.strftime('%Y')}.")
+        if include_month:
+            parts.append(f"{d.month:02d}.")
+        if include_day:
+            parts.append(f"{d.day:02d}.")
+        return " ".join(parts)
+
+    def fmt_time(dt):
+        return dt.strftime("%H") if dt.minute == 0 else dt.strftime("%H:%M")
+
+    def get_dt_rows(start, end):
+        if not isinstance(start, datetime):
+            # Dates are an open ended interval, so show the day before as the end date
+            end = end - timedelta(days=1)
+            if start == end:
+                return [(fmt_date(start), "")]
+            if start.year == end.year and start.month == end.month:
+                return [(fmt_date(start), " – " + fmt_date(end, ref=start))]
+            return [
+                (fmt_date(start), " –"),
+                (fmt_date(end, ref=start), ""),
+            ]
+
+        start = start.astimezone(TIMEZONE)
+        end = end.astimezone(TIMEZONE)
+        # it can utilize 9-16h format if it starts and ends on the same day, and both times are on the hour
+        if start.date() == end.date() and start.minute == 0 and end.minute == 0:
+            return [(fmt_date(start), fmt_time(start) + "–" + fmt_time(end))]
+        return [
+            (fmt_date(start), fmt_time(start) + " –"),
+            (fmt_date(end, ref=start), fmt_time(end)),
+        ]
 
     html = []
     for evt in events:
         summary = evt.get('summary', '')
         location = evt.get('location', '') or ''
-        html.append(
-            f'<tr style="color: {evt['clr']};">'
-            f'<td>{format_dt(evt['start'])}</td><td>{format_dt(evt['end'], end=True)}</td>'
-            f'<td>{summary}</td><td>{location}</td></tr>'
-        )
+        location = re.sub(r"[, ]+(?:Hungary|Magyarország)", "", location, flags=re.IGNORECASE)
+        color = evt['clr']
+        dt_rows = get_dt_rows(evt['start'], evt['end'])
+
+        if len(dt_rows) == 1:
+            date_str, time_str = dt_rows[0]
+            html.append(
+                f'<tr style="color: {color};">'
+                f'<td>{date_str}</td><td>{time_str}</td>'
+                f'<td>{summary}</td><td>{location}</td>'
+                f'</tr>'
+            )
+        else:
+            date0, time0 = dt_rows[0]
+            date1, time1 = dt_rows[1]
+            html.append(
+                f'<tr style="color: {color};">'
+                f'<td>{date0}</td><td>{time0}</td>'
+                f'<td rowspan="2">{summary}</td><td rowspan="2">{location}</td>'
+                f'</tr>'
+                f'<tr style="color: {color};">'
+                f'<td>{date1}</td><td>{time1}</td>'
+                f'</tr>'
+            )
 
     script_url = pathlib.Path(os.path.dirname(os.path.abspath(__file__))).as_uri()
 
@@ -239,23 +298,23 @@ def write_pdf_from_html(html, keep_temp):
         html_file.close()
 
         def print_html():
-          subprocess.run([
-              CHROMIUM_BROWSER_PATH,
-              '--headless',
-              '--disable-gpu',
-              '--run-all-compositor-stages-before-draw',
-              '--no-pdf-header-footer',
-              '--print-to-pdf-no-header',
-              f'--print-to-pdf={output_path}',
-              html_path
-          ], check=True, stdout=sys.stdout, stderr=sys.stderr, text=True)
+            subprocess.run([
+                CHROMIUM_BROWSER_PATH,
+                '--headless',
+                '--disable-gpu',
+                '--run-all-compositor-stages-before-draw',
+                '--no-pdf-header-footer',
+                '--print-to-pdf-no-header',
+                f'--print-to-pdf={output_path}',
+                html_path
+            ], check=True, stdout=sys.stdout, stderr=sys.stderr, text=True)
 
-          timeout = 10
-          start_time = time.time()
-          while not os.path.exists(output_path):
-              if time.time() - start_time > timeout:
-                  print(f'PDF file was not created within {timeout} seconds: {output_path}', file=sys.stderr)
-              time.sleep(0.1)
+            timeout = 10
+            start_time = time.time()
+            while not os.path.exists(output_path):
+                if time.time() - start_time > timeout:
+                    print(f'PDF file was not created within {timeout} seconds: {output_path}', file=sys.stderr)
+                time.sleep(0.1)
 
         print_html()
         if not os.path.exists(output_path):
@@ -324,3 +383,5 @@ def main():
 
 if __name__=="__main__":
     main()
+
+
