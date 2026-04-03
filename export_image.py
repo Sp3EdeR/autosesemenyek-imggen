@@ -60,7 +60,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       table-layout: fixed;
       width: 100%;
     }
-    thead {
+    thead, tfoot {
       background-color: #a7b6d662;
       background: linear-gradient(0deg,#0725384d 0%, #001a4d36 24%, #091b4b1a 79%, #092f4f29 91%, #0a325a17 100%);
       box-shadow: 0px 0px 5px #000000;
@@ -73,7 +73,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       margin-top: 6px;
       margin-bottom: 6px;
     }
-    thead p {
+    thead p, tfoot p {
       font-size: 0.8em;
       font-weight: normal;
       margin: 0;
@@ -98,6 +98,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       page-break-inside: avoid !important;
       white-space: nowrap;
     }
+    .legend {
+      display: flex;
+      width: 100%;
+    }
+    .legend span:first-child {
+      flex: 0 0 auto;
+      white-space: nowrap;
+    }
+    .legend span:not(:first-child) {
+      flex: 1 1 0;
+      min-width: 0;
+      text-align: center;
+    }
   </style>
 </head>
 <body>
@@ -118,6 +131,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <tbody>
       @TABLE_ROWS@
     </tbody>
+    <tfoot>
+      <tr><td colspan="4"><div class="legend"><span>Színek:</span>@LEGEND@</div></td></tr>
+    </tfoot>
   </table>
 </body>
 </html>
@@ -131,6 +147,10 @@ def load_html(file_path):
 
     with io.open(file_path, mode="r", encoding="utf-8") as file:
         return file.read()
+
+def parse_filter_legend(html):
+    pattern = re.compile(r'''['\"](?P<title>[^'\"]+)['\"]\s*:\s*{\s*(?:[^\[{]*(?:\[[^\]]*?\])|(?:\{[^\}]*?\})*)*\s*,?\s*['\"]clr['\"]\s*:\s*['\"](?P<color>#(?:[\dA-Fa-f]{3,8}|[a-zA-Z]+))['\"]''')
+    return {m.group('title'): m.group('color') for m in pattern.finditer(html)}
 
 def parse_calids_from_html(html):
     """Extract calendar IDs and colors from the autos esemenyek index.html."""
@@ -173,8 +193,15 @@ def get_future_events(evtdata, start_of_day):
         now = datetime(now.year, now.month, now.day, tzinfo=TIMEZONE)
     return (evt for evt in evtdata if now < get_time(evt['end']))
 
-def events_to_html_table(events):
-    """Convert event data to an HTML table."""
+def format_output_html(events, legenddata):
+    """Convert event and legend data to HTML and generate the final HTML."""
+    # Format the legend
+    legend = ''.join(
+        f'<span style="color: {color};">{title}</span>'
+        for title, color in legenddata.items()
+    )
+
+    # Format the event table
     DATE_FMT = '%Y.%m.%d.'
     DATETIME_FMT = DATE_FMT + ' %H:%M'
     def format_dt(dt, end=False):
@@ -196,7 +223,8 @@ def events_to_html_table(events):
 
     script_url = pathlib.Path(os.path.dirname(os.path.abspath(__file__))).as_uri()
 
-    return HTML_TEMPLATE.replace('@TABLE_ROWS@', '\n'.join(html), 1).replace('@SRC_URL@', script_url)
+    tokens = { '@TABLE_ROWS@': '\n'.join(html), '@LEGEND@': legend, '@SRC_URL@': script_url }
+    return re.sub('|'.join(tokens.keys()), lambda m: tokens[m.group(0)], HTML_TEMPLATE)
 
 def write_pdf_from_html(html, keep_temp):
     """Write HTML to a PDF file using headless Edge browser (Windows only)."""
@@ -279,14 +307,16 @@ def main():
     args = parser.parse_args()
 
     print("Loading HTML...")
-    caldata = parse_calids_from_html(load_html(args.html_file))
+    html = load_html(args.html_file)
+    legenddata = parse_filter_legend(html)
+    caldata = parse_calids_from_html(html)
     print("Loaded some calendars. Processing...")
     caldata = download_calendars(caldata)
     evtdata = get_calendar_events(caldata)
     evtdata = get_future_events(evtdata, args.start_of_day)
     events = sorted(evtdata, key=lambda evt: (get_time(evt["start"]), evt["summary"]))
     print(f"Found {len(events)} future events. Generating PDF...")
-    html = events_to_html_table(events)
+    html = format_output_html(events, legenddata)
     pdf_file = write_pdf_from_html(html, keep_temp=args.keep_temp)
     print("PDF file is created. Converting to PNG images...")
     out_dir = export_to_png(args.output, pdf_file, keep_temp=args.keep_temp)
