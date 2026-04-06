@@ -8,7 +8,7 @@ if importlib.util.find_spec('pymupdf') is None:
     raise ImportError('Install the missing pymupdf module using "pip install pymupdf".')
 
 import argparse
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 import glob
 import icalendar # pip install icalendar
 import io
@@ -191,12 +191,17 @@ def get_time(dt):
     else:
         return datetime(dt.year, dt.month, dt.day, tzinfo=TIMEZONE)
 
-def get_future_events(evtdata, start_of_day):
-    """Filter events to only those that are in the future."""
-    now = datetime.now(TIMEZONE)
-    if start_of_day:
-        now = datetime(now.year, now.month, now.day, tzinfo=TIMEZONE)
-    return (evt for evt in evtdata if now < get_time(evt['end']))
+def filter_events(evtdata, dt_start=None, dt_end=None):
+  """Filter events to those overlapping the requested date range."""
+  dt_from = get_time(dt_start) if dt_start is not None else None
+  dt_to = get_time(dt_end + timedelta(days=1)) if dt_end is not None else None
+
+  for evt in evtdata:
+    if (
+        (dt_from is None or dt_from < get_time(evt['end'])) and
+        (dt_to is None or get_time(evt['start']) < dt_to)
+    ):
+        yield evt
 
 def format_output_html(events, legenddata):
     """Convert event and legend data to HTML and generate the final HTML."""
@@ -330,12 +335,23 @@ def main():
     if os.name != "nt":
         raise OSError("This script can only be run on Windows.")
 
+    def parse_iso_date(value):
+        """Parse an ISO date from the command line."""
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"Expected date in format YYYY-MM-DD, got {value!r}.") from exc
+
     parser = argparse.ArgumentParser(description="Export calendar events as a PDF.")
     parser.add_argument("html_file", nargs="?", default=DEFAULT_INPUT, help="URL or path of HTML file to parse. Default: website.")
     parser.add_argument("--output", "-o", default="events", help="Output without extension. Default: events")
-    parser.add_argument("--start-of-day", type=bool, default=True, help="Show events from midnight today. Default: True")
+    parser.add_argument("--dt-start", "-s", default=datetime.now(TIMEZONE).date(), type=parse_iso_date, help="Collect events from this ISO date (YYYY-MM-DD). Default: today.")
+    parser.add_argument("--dt-end", "-e", type=parse_iso_date, help="Collect events through this ISO date (YYYY-MM-DD).")
     parser.add_argument("--keep-temp", type=bool, default=False, help="Keep temporary files. Default: False")
     args = parser.parse_args()
+
+    if args.dt_start is not None and args.dt_end is not None and get_time(args.dt_end) < get_time(args.dt_start):
+        parser.error("--dt-end must be on or after --dt-start.")
 
     print("Loading HTML...")
     html = load_html(args.html_file)
@@ -344,9 +360,9 @@ def main():
     print("Loaded some calendars. Processing...")
     caldata = download_calendars(caldata)
     evtdata = get_calendar_events(caldata)
-    evtdata = get_future_events(evtdata, args.start_of_day)
+    evtdata = filter_events(evtdata, dt_start=args.dt_start, dt_end=args.dt_end)
     events = sorted(evtdata, key=lambda evt: (get_time(evt["start"]), evt["summary"]))
-    print(f"Found {len(events)} future events. Generating PDF...")
+    print(f"Found {len(events)} matching events. Generating PDF...")
     html = format_output_html(events, legenddata)
     pdf_file = write_pdf_from_html(html, keep_temp=args.keep_temp)
     print("PDF file is created. Converting to PNG images...")
