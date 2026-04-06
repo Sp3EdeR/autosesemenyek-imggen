@@ -57,7 +57,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border: none;
       border-collapse: collapse;
       border-spacing: 0;
-      table-layout: fixed;
       width: 100%;
     }
     thead, tfoot {
@@ -91,11 +90,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border: 1px solid gray;
       border-left: none;
       border-right: none;
-      overflow-wrap: break-word;
-      padding: 2px 6px 2px 6px;
+      padding: 2px 4px;
     }
-    tr td:nth-child(1), tr td:nth-child(2) {
+    tr {
       page-break-inside: avoid !important;
+    }
+    tr td:first-child {
       white-space: nowrap;
     }
     .legend {
@@ -116,28 +116,33 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <body>
   <table cellspacing="0" cellpadding="4">
     <colgroup>
-      <col span="2" style="width:34mm;" /> <!-- Change if font is changed! -->
+      <col span="1" style="width:1%;" />
       <col span="1" style="width:60%;" />
       <col span="1" style="width:40%;" />
     </colgroup>
     <thead>
-      <tr><th colspan="4">
+      <tr><th colspan="3">
         <h1>AUTÓS ESEMÉNYEK NAPTÁRA</h1>
         <p><a href="https://sp3eder.github.io/autosesemenyek/" target="_blank">sp3eder.github.io/autosesemenyek</a> &#8212; eseményleírások, élő követés</p>
         <p class="small"><a href="https://sp3eder.github.io/" target="_blank">sp3eder.github.io</a> &#8212; Autós Appok: alkalmazások az autós közösségnek</p>
       </th></tr>
-      <tr><th>KEZDÉS</th><th>VÉGE</th><th>ESEMÉNY</th><th>HELYSZÍN</th></tr>
+      <tr><th>IDŐPONT</th><th>ESEMÉNY</th><th>HELYSZÍN</th></tr>
     </thead>
     <tbody>
       @TABLE_ROWS@
     </tbody>
     <tfoot>
-      <tr><td colspan="4"><div class="legend"><span>Színek:</span>@LEGEND@</div></td></tr>
+      <tr><td colspan="3"><div class="legend"><span>Színek:</span>@LEGEND@</div></td></tr>
     </tfoot>
   </table>
 </body>
 </html>
 """
+
+# Note on HTML column sizing: Using width: 1% for the first column makes it shrink to fit its
+# content, because the first column also has white-space: nowrap.
+# The other columns then take the remaining space with the indicated ratios while wrapping.
+# This logic is provided by the table's default auto layout algorithm.
 
 def load_html(file_path):
     """Load Autos Esemenyek index.html file from a URL or local file."""
@@ -201,29 +206,55 @@ def format_output_html(events, legenddata):
         for title, color in legenddata.items()
     )
 
-    # Format the event table
-    DATE_FMT = '%Y.%m.%d.'
-    DATETIME_FMT = DATE_FMT + ' %H:%M'
-    def format_dt(dt, end=False):
-        # Dates are an open ended interval, so show the day before as the end date
-        if end and not isinstance(dt, datetime):
-            dt = dt - timedelta(days=1)
-        return (dt.astimezone(TIMEZONE).strftime(DATETIME_FMT) if isinstance(dt, datetime)
-                else dt.strftime(DATE_FMT))
+    def fmt_dt_range(start, end):
+        """Implements complex logic for formatting the event start-end time as a string."""
+        [thinsp, mdash] = ['&#8202;', '\u2014']
 
-    html = []
+        [start_has_time, end_has_time] = [isinstance(dt, datetime) for dt in (start, end)]
+        start = start.astimezone(TIMEZONE) if start_has_time else start
+        # Dates are an open ended interval, so show the day before as the end date
+        end = end.astimezone(TIMEZONE) if end_has_time else end - timedelta(days=1)
+        [fmt_dt_start, fmt_dt_end] = [dt.strftime(f"%Y.{thinsp}%m.{thinsp}%d.") for dt in (start, end)]
+
+        if start_has_time != end_has_time:
+            raise ValueError("Start and end times must both be date or datetime")
+        elif start == end:
+            # Single date: yyyy.mm.dd.
+            return fmt_dt_start
+        elif not start_has_time:
+            if start.year == end.year and start.month == end.month:
+                # Date-only same-month: yyyy.mm.dd-dd.
+                return f"{fmt_dt_start.removesuffix('.')}{mdash}{end.day:02}."
+            else:
+                # Different months or years: yyyy.mm.dd.\nyyyy.mm.dd.
+                return f"{fmt_dt_start} {mdash}<br/>{fmt_dt_end}"
+        else:
+            [fmt_t_start, fmt_t_end] = [t.strftime("%H:%M") for t in (start, end)]
+            if start.date() == end.date():
+                # Same day with time: yyyy.mm.dd. hh:mm-hh:mm
+                return f"{fmt_dt_start} {fmt_t_start}-{fmt_t_end}"
+            else:
+                # Different days with time: yyyy.mm.dd. hh:mm\nyyyy.mm.dd. hh:mm
+                return f"{fmt_dt_start} {fmt_t_start} {mdash}<br/>{fmt_dt_end} {fmt_t_end}"
+
+    # Format the event table
+    rows = []
     for evt in events:
         summary = evt.get('summary', '')
         location = evt.get('location', '') or ''
-        html.append(
+        location = re.sub(
+            r"(?:[, ]+(?:\d{4}|hungary|magyarország))+$", "", location, flags=re.IGNORECASE
+        )
+
+        rows.append(
             f'<tr style="color: {evt['clr']};">'
-            f'<td>{format_dt(evt['start'])}</td><td>{format_dt(evt['end'], end=True)}</td>'
+            f'<td>{fmt_dt_range(evt['start'], evt['end'])}</td>'
             f'<td>{summary}</td><td>{location}</td></tr>'
         )
 
     script_url = pathlib.Path(os.path.dirname(os.path.abspath(__file__))).as_uri()
 
-    tokens = { '@TABLE_ROWS@': '\n'.join(html), '@LEGEND@': legend, '@SRC_URL@': script_url }
+    tokens = { '@TABLE_ROWS@': '\n'.join(rows), '@LEGEND@': legend, '@SRC_URL@': script_url }
     return re.sub('|'.join(tokens.keys()), lambda m: tokens[m.group(0)], HTML_TEMPLATE)
 
 def write_pdf_from_html(html, keep_temp):
@@ -239,23 +270,23 @@ def write_pdf_from_html(html, keep_temp):
         html_file.close()
 
         def print_html():
-          subprocess.run([
-              CHROMIUM_BROWSER_PATH,
-              '--headless',
-              '--disable-gpu',
-              '--run-all-compositor-stages-before-draw',
-              '--no-pdf-header-footer',
-              '--print-to-pdf-no-header',
-              f'--print-to-pdf={output_path}',
-              html_path
-          ], check=True, stdout=sys.stdout, stderr=sys.stderr, text=True)
+            subprocess.run([
+                CHROMIUM_BROWSER_PATH,
+                '--headless',
+                '--disable-gpu',
+                '--run-all-compositor-stages-before-draw',
+                '--no-pdf-header-footer',
+                '--print-to-pdf-no-header',
+                f'--print-to-pdf={output_path}',
+                html_path
+            ], check=True, stdout=sys.stdout, stderr=sys.stderr, text=True)
 
-          timeout = 10
-          start_time = time.time()
-          while not os.path.exists(output_path):
-              if time.time() - start_time > timeout:
-                  print(f'PDF file was not created within {timeout} seconds: {output_path}', file=sys.stderr)
-              time.sleep(0.1)
+            timeout = 10
+            start_time = time.time()
+            while not os.path.exists(output_path):
+                if time.time() - start_time > timeout:
+                    print(f'PDF file was not created within {timeout} seconds: {output_path}', file=sys.stderr)
+                time.sleep(0.1)
 
         print_html()
         if not os.path.exists(output_path):
@@ -324,3 +355,5 @@ def main():
 
 if __name__=="__main__":
     main()
+
+
