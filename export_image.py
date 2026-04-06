@@ -8,7 +8,7 @@ if importlib.util.find_spec('pymupdf') is None:
     raise ImportError('Install the missing pymupdf module using "pip install pymupdf".')
 
 import argparse
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 import glob
 import icalendar # pip install icalendar
 import io
@@ -57,7 +57,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border: none;
       border-collapse: collapse;
       border-spacing: 0;
-      table-layout: fixed;
       width: 100%;
     }
     thead, tfoot {
@@ -91,11 +90,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border: 1px solid gray;
       border-left: none;
       border-right: none;
-      overflow-wrap: break-word;
-      padding: 2px 6px 2px 6px;
+      padding: 2px 4px;
     }
-    tr td:nth-child(1), tr td:nth-child(2) {
+    tr {
       page-break-inside: avoid !important;
+    }
+    tr td:first-child {
       white-space: nowrap;
     }
     .legend {
@@ -111,41 +111,38 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       min-width: 0;
       text-align: center;
     }
-    tr td:nth-child(1) {
-      text-align: right;
-      padding-right: 2px;
-    }
-    tr td:nth-child(2) {
-      padding-left: 2px;
-    }
   </style>
 </head>
 <body>
   <table cellspacing="0" cellpadding="4">
     <colgroup>
-      <col span="1" style="width:28mm;" /> <!-- Change if font is changed! -->
-      <col span="1" style="width:14mm;" /> <!-- Change if font is changed! -->
+      <col span="1" style="width:1%;" />
       <col span="1" style="width:60%;" />
       <col span="1" style="width:40%;" />
     </colgroup>
     <thead>
-      <tr><th colspan="4">
+      <tr><th colspan="3">
         <h1>AUTÓS ESEMÉNYEK NAPTÁRA</h1>
         <p><a href="https://sp3eder.github.io/autosesemenyek/" target="_blank">sp3eder.github.io/autosesemenyek</a> &#8212; eseményleírások, élő követés</p>
         <p class="small"><a href="https://sp3eder.github.io/" target="_blank">sp3eder.github.io</a> &#8212; Autós Appok: alkalmazások az autós közösségnek</p>
       </th></tr>
-      <tr><th colspan="2">IDŐPONT</th><th>ESEMÉNY</th><th>HELYSZÍN</th></tr>
+      <tr><th>IDŐPONT</th><th>ESEMÉNY</th><th>HELYSZÍN</th></tr>
     </thead>
     <tbody>
       @TABLE_ROWS@
     </tbody>
     <tfoot>
-      <tr><td colspan="4"><div class="legend"><span>Színek:</span>@LEGEND@</div></td></tr>
+      <tr><td colspan="3"><div class="legend"><span>Színek:</span>@LEGEND@</div></td></tr>
     </tfoot>
   </table>
 </body>
 </html>
 """
+
+# Note on HTML column sizing: Using width: 1% for the first column makes it shrink to fit its
+# content, because the first column also has white-space: nowrap.
+# The other columns then take the remaining space with the indicated ratios while wrapping.
+# This logic is provided by the table's default auto layout algorithm.
 
 def load_html(file_path):
     """Load Autos Esemenyek index.html file from a URL or local file."""
@@ -209,80 +206,55 @@ def format_output_html(events, legenddata):
         for title, color in legenddata.items()
     )
 
-    # Format the event table
+    def fmt_dt_range(start, end):
+        """Implements complex logic for formatting the event start-end time as a string."""
+        [thinsp, mdash] = ['&#8202;', '\u2014']
 
-    def fmt_date(d, ref=None):
-        """Format date as "'yyyy. mm. dd.", omitting parts that match ref (if given)."""
-        include_year = ref is None or ref.year != d.year
-        include_month = include_year or ref.month != d.month
-        include_day = include_month or ref.day != d.day
-        parts = []
-        if include_year:
-            parts.append(f"{d.strftime('%Y')}.")
-        if include_month:
-            parts.append(f"{d.month:02d}.")
-        if include_day:
-            parts.append(f"{d.day:02d}.")
-        return " ".join(parts)
+        [start_has_time, end_has_time] = [isinstance(dt, datetime) for dt in (start, end)]
+        start = start.astimezone(TIMEZONE) if start_has_time else start
+        # Dates are an open ended interval, so show the day before as the end date
+        end = end.astimezone(TIMEZONE) if end_has_time else end - timedelta(days=1)
+        [fmt_dt_start, fmt_dt_end] = [dt.strftime(f"%Y.{thinsp}%m.{thinsp}%d.") for dt in (start, end)]
 
-    def fmt_time(dt):
-        return dt.strftime("%H") if dt.minute == 0 else dt.strftime("%H:%M")
-
-    def get_dt_rows(start, end):
-        if not isinstance(start, datetime):
-            # Dates are an open ended interval, so show the day before as the end date
-            end = end - timedelta(days=1)
-            if start == end:
-                return [(fmt_date(start), "")]
+        if start_has_time != end_has_time:
+            raise ValueError("Start and end times must both be date or datetime")
+        elif start == end:
+            # Single date: yyyy.mm.dd.
+            return fmt_dt_start
+        elif not start_has_time:
             if start.year == end.year and start.month == end.month:
-                return [(fmt_date(start), " – " + fmt_date(end, ref=start))]
-            return [
-                (fmt_date(start), " –"),
-                (fmt_date(end, ref=start), ""),
-            ]
+                # Date-only same-month: yyyy.mm.dd-dd.
+                return f"{fmt_dt_start.removesuffix('.')}{mdash}{end.day:02}."
+            else:
+                # Different months or years: yyyy.mm.dd.\nyyyy.mm.dd.
+                return f"{fmt_dt_start} {mdash}<br/>{fmt_dt_end}"
+        else:
+            [fmt_t_start, fmt_t_end] = [t.strftime("%H:%M") for t in (start, end)]
+            if start.date() == end.date():
+                # Same day with time: yyyy.mm.dd. hh:mm-hh:mm
+                return f"{fmt_dt_start} {fmt_t_start}-{fmt_t_end}"
+            else:
+                # Different days with time: yyyy.mm.dd. hh:mm\nyyyy.mm.dd. hh:mm
+                return f"{fmt_dt_start} {fmt_t_start} {mdash}<br/>{fmt_dt_end} {fmt_t_end}"
 
-        start = start.astimezone(TIMEZONE)
-        end = end.astimezone(TIMEZONE)
-        # it can utilize 9-16h format if it starts and ends on the same day, and both times are on the hour
-        if start.date() == end.date() and start.minute == 0 and end.minute == 0:
-            return [(fmt_date(start), fmt_time(start) + "–" + fmt_time(end))]
-        return [
-            (fmt_date(start), fmt_time(start) + " –"),
-            (fmt_date(end, ref=start), fmt_time(end)),
-        ]
-
-    html = []
+    # Format the event table
+    rows = []
     for evt in events:
         summary = evt.get('summary', '')
         location = evt.get('location', '') or ''
-        location = re.sub(r"[, ]+(?:Hungary|Magyarország)", "", location, flags=re.IGNORECASE)
-        color = evt['clr']
-        dt_rows = get_dt_rows(evt['start'], evt['end'])
+        location = re.sub(
+            r"(?:[, ]+(?:\d{4}|hungary|magyarország))+$", "", location, flags=re.IGNORECASE
+        )
 
-        if len(dt_rows) == 1:
-            date_str, time_str = dt_rows[0]
-            html.append(
-                f'<tr style="color: {color};">'
-                f'<td>{date_str}</td><td>{time_str}</td>'
-                f'<td>{summary}</td><td>{location}</td>'
-                f'</tr>'
-            )
-        else:
-            date0, time0 = dt_rows[0]
-            date1, time1 = dt_rows[1]
-            html.append(
-                f'<tr style="color: {color};">'
-                f'<td>{date0}</td><td>{time0}</td>'
-                f'<td rowspan="2">{summary}</td><td rowspan="2">{location}</td>'
-                f'</tr>'
-                f'<tr style="color: {color};">'
-                f'<td>{date1}</td><td>{time1}</td>'
-                f'</tr>'
-            )
+        rows.append(
+            f'<tr style="color: {evt['clr']};">'
+            f'<td>{fmt_dt_range(evt['start'], evt['end'])}</td>'
+            f'<td>{summary}</td><td>{location}</td></tr>'
+        )
 
     script_url = pathlib.Path(os.path.dirname(os.path.abspath(__file__))).as_uri()
 
-    tokens = { '@TABLE_ROWS@': '\n'.join(html), '@LEGEND@': legend, '@SRC_URL@': script_url }
+    tokens = { '@TABLE_ROWS@': '\n'.join(rows), '@LEGEND@': legend, '@SRC_URL@': script_url }
     return re.sub('|'.join(tokens.keys()), lambda m: tokens[m.group(0)], HTML_TEMPLATE)
 
 def write_pdf_from_html(html, keep_temp):
